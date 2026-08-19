@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
 # Continuous Integration
 #
-# Jobs run in PARALLEL on separate machines unless linked by `needs:`.
-# Style, static analysis and tests are independent, so they all start at
-# once and the wall-clock time is the SLOWEST job, not the sum.
+# The repeated setup sequence now lives in a composite action at
+# .github/actions/setup-php-project. Each job below states only what
+# makes it different.
 # ---------------------------------------------------------------------------
 
 name: CI
@@ -19,92 +19,45 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Least privilege: this workflow only ever reads the repository.
-# The default token is broader than that; narrowing it means a
-# compromised dependency in the build cannot push code or open releases.
 permissions:
   contents: read
 
 jobs:
-  # -------------------------------------------------------------------------
   coding-standards:
     name: Coding standards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          coverage: none
-          tools: composer:v2
-
-      - run: composer install --prefer-dist --no-progress --no-interaction
-
-      # `check` reports and exits non-zero; it never rewrites files.
-      # CI must never modify your code - it reports, you fix.
+      - uses: ./.github/actions/setup-php-project
       - run: composer cs
 
-  # -------------------------------------------------------------------------
   static-analysis:
     name: Static analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          coverage: none
-          tools: composer:v2
-
-      - run: composer install --prefer-dist --no-progress --no-interaction
-
+      - uses: ./.github/actions/setup-php-project
       - run: composer stan
 
-  # -------------------------------------------------------------------------
   tests:
-    # ${{ matrix.php }} is substituted per combination, so the checks list
-    # reads "Tests (PHP 8.2)", "Tests (PHP 8.3)", "Tests (PHP 8.4)".
     name: Tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
-
     strategy:
-      # Without this, the first failing combination cancels the others and
-      # you learn that 8.2 broke while never finding out about 8.4.
       fail-fast: false
-
       matrix:
         php: ['8.2', '8.3', '8.4']
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: shivammathur/setup-php@v2
+      - uses: ./.github/actions/setup-php-project
         with:
           php-version: ${{ matrix.php }}
-          coverage: none
-          tools: composer:v2
-
-      - run: composer install --prefer-dist --no-progress --no-interaction
-
       - run: composer test
 
-  # -------------------------------------------------------------------------
-  # One job that summarises every other job. Branch protection requires
-  # THIS check and nothing else, so adding or removing a PHP version from
-  # the matrix never again forces you to edit the ruleset.
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-
-    # `needs:` makes this wait for the others to finish.
     needs: [coding-standards, static-analysis, tests]
-
-    # Without always(), a failed dependency SKIPS this job, and a skipped
-    # required check reads as "waiting" forever instead of "failed".
     if: always()
-
     steps:
       - name: Fail if any upstream job did not succeed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

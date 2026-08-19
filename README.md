@@ -11,6 +11,7 @@ A small PHP application used as a hands-on subject for learning CI/CD.
 | `src/PriceCalculator.php` | Cart subtotal, discount codes and VAT |
 | `tests/PriceCalculatorTest.php` | 10 PHPUnit tests |
 | `.github/workflows/ci.yml` | The pipeline: runs on every push and pull request |
+| `.github/actions/setup-php-project/` | Composite action: PHP + Composer cache + install |
 | `phpstan.neon` | Static analysis config (level 9) |
 | `.php-cs-fixer.dist.php` | Coding standard config (PSR-12 + PHP 8.2 migration) |
 | `phpunit.xml` | Test runner configuration |

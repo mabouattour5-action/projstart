@@ -1,0 +1,69 @@
+# ---------------------------------------------------------------------------
+# A COMPOSITE ACTION: a reusable bundle of steps, kept in this repository.
+#
+# Before this existed, four jobs each repeated the same four steps. Fixing
+# a bug in that sequence meant editing it four times and getting it right
+# four times. Now it lives in one file.
+#
+# Used from a workflow as:   - uses: ./.github/actions/setup-php-project
+# (The repository must already be checked out - a local action is a file
+# on disk, so `actions/checkout` has to run first.)
+# ---------------------------------------------------------------------------
+
+name: Set up PHP project
+description: Install PHP, restore the Composer cache and install dependencies
+
+inputs:
+  php-version:
+    description: PHP version to install
+    required: false
+    default: '8.2'
+
+runs:
+  using: composite
+
+  steps:
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ inputs.php-version }}
+        coverage: none
+        tools: composer:v2
+
+    # Ask Composer where its download cache lives rather than hardcoding a
+    # path - it differs between operating systems and Composer versions.
+    - name: Resolve the Composer cache directory
+      id: composer-cache
+      shell: bash
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the Composer cache
+      uses: actions/cache@v4
+      with:
+        # We cache Composer's DOWNLOAD cache, not vendor/. vendor/ contains
+        # generated autoloader files tied to a PHP version and to absolute
+        # paths; restoring it across matrix entries invites subtle breakage.
+        path: ${{ steps.composer-cache.outputs.dir }}
+
+        # The key is the cache's identity. hashFiles() over composer.lock
+        # means: change a dependency and you get a brand new cache, so a
+        # stale entry can never mask a dependency change.
+        key: ${{ runner.os }}-composer-${{ inputs.php-version }}-${{ hashFiles('**/composer.lock') }}
+
+        # On a miss, fall back to the newest cache matching these prefixes.
+        # A partial cache still saves most of the downloads; Composer only
+        # fetches what actually changed.
+        restore-keys: |
+          ${{ runner.os }}-composer-${{ inputs.php-version }}-
+          ${{ runner.os }}-composer-
+
+    # Restored in step 5: this was in the original pipeline and got lost
+    # when the workflow was split into parallel jobs.
+    - name: Validate composer.json and composer.lock
+      shell: bash
+      run: composer validate --strict
+
+    # Every `run:` inside a composite action must declare its shell.
+    - name: Install dependencies
+      shell: bash
+      run: composer install --prefer-dist --no-progress --no-interaction
