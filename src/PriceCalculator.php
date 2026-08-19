@@ -74,6 +74,8 @@ final class PriceCalculator
 
     private function round(float $amount): float
     {
-        return round($amount, 2);
+        // Money should never gain a fraction of a cent from floating point
+        // artifacts such as 23.987999999999996, so truncate to 2 decimals.
+        return floor($amount * 100) / 100;
     }
 }
