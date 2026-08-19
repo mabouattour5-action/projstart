@@ -2,8 +2,7 @@
 
 A small PHP application used as a hands-on subject for learning CI/CD.
 
-<!-- BADGE: replaced with the real owner/repo once the GitHub remote exists -->
-<!-- ![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg) -->
+[![CI](https://github.com/mabouattour5-action/projstart/actions/workflows/ci.yml/badge.svg)](https://github.com/mabouattour5-action/projstart/actions/workflows/ci.yml)
 
 ## What is in here
 
