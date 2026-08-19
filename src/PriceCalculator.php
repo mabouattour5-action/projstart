@@ -16,8 +16,8 @@ final class PriceCalculator
     /** @var array<string, float> discount code => rate off */
     private const DISCOUNTS = [
         'WELCOME10' => 0.10,
-        'SUMMER25'  => 0.25,
-        'HALFOFF'   => 0.50,
+        'SUMMER25' => 0.25,
+        'HALFOFF' => 0.50,
     ];
 
     /**

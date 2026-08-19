@@ -7,6 +7,8 @@
         "php": ">=8.2"
     },
     "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^11.0"
     },
     "autoload": {
@@ -20,9 +22,24 @@
         }
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "stan": "phpstan analyse --no-progress",
+        "cs": "php-cs-fixer check --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "ci": [
+            "@cs",
+            "@stan",
+            "@test"
+        ]
     },
     "config": {
         "sort-packages": true
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit suite",
+        "stan": "Run PHPStan static analysis",
+        "cs": "Report coding standard violations without changing files",
+        "cs:fix": "Rewrite files to match the coding standard",
+        "ci": "Run every check the pipeline runs"
     }
 }

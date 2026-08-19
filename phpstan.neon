@@ -1,0 +1,13 @@
+parameters:
+    # Level 9 is the strictest setting short of `max`. Start a legacy
+    # project at 0 and raise it one level per pull request; start a new
+    # project as high as it will go and never come back down.
+    level: 9
+
+    paths:
+        - src
+        - tests
+
+    # Fail the build on anything, including notices about unused
+    # ignore rules that have gone stale.
+    reportUnmatchedIgnoredErrors: true
