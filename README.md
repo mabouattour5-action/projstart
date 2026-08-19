@@ -12,6 +12,7 @@ A small PHP application used as a hands-on subject for learning CI/CD.
 | `tests/PriceCalculatorTest.php` | 10 PHPUnit tests |
 | `.github/workflows/ci.yml` | The pipeline: runs on every push and pull request |
 | `.github/actions/setup-php-project/` | Composite action: PHP + Composer cache + install |
+| `tools/check-coverage.php` | Fails the build below the coverage threshold |
 | `phpstan.neon` | Static analysis config (level 9) |
 | `.php-cs-fixer.dist.php` | Coding standard config (PSR-12 + PHP 8.2 migration) |
 | `phpunit.xml` | Test runner configuration |
@@ -34,6 +35,8 @@ composer test
 | Command | Does |
 | --- | --- |
 | `composer test` | Run the PHPUnit suite |
+| `composer coverage` | Run with coverage and enforce the 90% minimum (needs pcov or Xdebug) |
+| `composer audit` | Check locked dependencies for known CVEs |
 | `composer stan` | Run PHPStan static analysis |
 | `composer cs` | Report style violations (changes nothing) |
 | `composer cs:fix` | Rewrite files to match the standard |
@@ -48,11 +51,13 @@ Five jobs run in parallel on separate machines:
 
 | Job | Checks |
 | --- | --- |
+| Dependencies | `composer validate --strict` and `composer audit --locked` |
 | Coding standards | PHP-CS-Fixer, report only |
 | Static analysis | PHPStan level 9 |
 | Tests (PHP 8.2) | PHPUnit |
 | Tests (PHP 8.3) | PHPUnit |
 | Tests (PHP 8.4) | PHPUnit |
+| Coverage | PHPUnit with pcov, minimum 90% line coverage |
 
 A sixth job, **CI Gate**, waits for all of them and fails if any failed.
 Branch protection requires only `CI Gate`, so changing the PHP matrix
