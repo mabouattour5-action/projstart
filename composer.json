@@ -23,10 +23,21 @@
     },
     "scripts": {
         "test": "phpunit",
+        "coverage": [
+            "@putenv XDEBUG_MODE=coverage",
+            "phpunit --coverage-clover=build/logs/clover.xml",
+            "php tools/check-coverage.php build/logs/clover.xml 90"
+        ],
         "stan": "phpstan analyse --no-progress",
         "cs": "php-cs-fixer check --diff",
         "cs:fix": "php-cs-fixer fix",
+        "audit": "composer audit --locked",
+        "validate:all": [
+            "@composer validate --strict",
+            "@audit"
+        ],
         "ci": [
+            "@validate:all",
             "@cs",
             "@stan",
             "@test"
@@ -37,9 +48,12 @@
     },
     "scripts-descriptions": {
         "test": "Run the PHPUnit suite",
+        "coverage": "Run the suite with coverage and enforce the 90% minimum",
         "stan": "Run PHPStan static analysis",
-        "cs": "Report coding standard violations without changing files",
+        "cs": "Report style violations (changes nothing)",
         "cs:fix": "Rewrite files to match the coding standard",
+        "audit": "Check locked dependencies for known vulnerabilities",
+        "validate:all": "Validate composer.json/lock and audit dependencies",
         "ci": "Run every check the pipeline runs"
     }
 }

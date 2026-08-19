@@ -19,6 +19,11 @@ inputs:
     required: false
     default: '8.2'
 
+  coverage:
+    description: 'Coverage driver: none (fast) or pcov'
+    required: false
+    default: none
+
 runs:
   using: composite
 
@@ -27,7 +32,7 @@ runs:
       uses: shivammathur/setup-php@v2
       with:
         php-version: ${{ inputs.php-version }}
-        coverage: none
+        coverage: ${{ inputs.coverage }}
         tools: composer:v2
 
     # Ask Composer where its download cache lives rather than hardcoding a
@@ -56,12 +61,6 @@ runs:
         restore-keys: |
           ${{ runner.os }}-composer-${{ inputs.php-version }}-
           ${{ runner.os }}-composer-
-
-    # Restored in step 5: this was in the original pipeline and got lost
-    # when the workflow was split into parallel jobs.
-    - name: Validate composer.json and composer.lock
-      shell: bash
-      run: composer validate --strict
 
     # Every `run:` inside a composite action must declare its shell.
     - name: Install dependencies

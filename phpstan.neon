@@ -7,6 +7,7 @@ parameters:
     paths:
         - src
         - tests
+        - tools
 
     # Fail the build on anything, including notices about unused
     # ignore rules that have gone stale.
