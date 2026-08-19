@@ -1,0 +1,10 @@
+/vendor/
+.phpunit.result.cache
+.phpunit.cache/
+/build/
+.idea/
+.vscode/
+
+# NOTE: composer.lock is intentionally NOT ignored.
+# For applications it must be committed so CI installs the exact
+# same dependency versions you tested against locally.
