@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------------------
+# Continuous Delivery
+#
+# Triggered by a version TAG, not by a push to a branch. Tagging is the
+# deliberate human act that says "this commit is a release"; merging to
+# main only says "this commit is good".
+#
+#   git tag -a v1.0.0 -m "First release"
+#   git push origin v1.0.0
+# ---------------------------------------------------------------------------
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Never cancel a release halfway through. Unlike CI, a partially completed
+# release leaves artifacts published and others missing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. VERIFY - re-run the entire CI pipeline against the tagged commit.
+  #
+  # A tag can point at ANY commit, including one that never sat on main and
+  # never passed a check. Trusting "it was green when we merged" is how
+  # untested code reaches production.
+  verify:
+    name: Verify
+    uses: ./.github/workflows/ci.yml
+
+  # -------------------------------------------------------------------------
+  # 2. BUILD - produce the artifact exactly once.
+  #
+  # THE central rule of CD: build once, deploy that same file everywhere.
+  # Rebuilding per environment means staging and production are different
+  # binaries, and the thing you tested is not the thing you shipped.
+  build:
+    name: Build artifact
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
+
+      - name: Build the release archive
+        run: tools/build-release.sh "${{ github.ref_name }}"
+
+      # Hand the artifact to the next job. Jobs run on different machines
+      # and share no disk, so anything crossing a job boundary must be
+      # uploaded and downloaded explicitly.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-archive
+          path: build/dist/*
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # 3. PUBLISH - gated behind a manual approval.
+  publish:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: build
+
+    # Naming an environment lets you require a human to approve before this
+    # job starts, and records every deployment in the repository's
+    # Environments view. Configure reviewers in Settings > Environments.
+    environment:
+      name: production
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+    # Widened ONLY for this job. The other jobs stay read-only, so a
+    # compromised dependency during build cannot publish a release.
+    permissions:
+      contents: write
+
+    steps:
+      # Note: no checkout of source. We publish the artifact that was
+      # already built and verified - we do not rebuild it here.
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-archive
+          path: dist
+
+      - name: Show what is about to be published
+        run: ls -lh dist/ && cat dist/*.sha256
+
+      # gh is preinstalled on GitHub runners and authenticates with the
+      # built-in token, so this needs no third-party action and no secret.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            dist/*.zip dist/*.sha256
