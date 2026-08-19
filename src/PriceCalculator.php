@@ -74,8 +74,12 @@ final class PriceCalculator
 
     private function round(float $amount): float
     {
-        // Money should never gain a fraction of a cent from floating point
-        // artifacts such as 23.987999999999996, so truncate to 2 decimals.
-        return floor($amount * 100) / 100;
+        // Do NOT truncate here. Binary floating point stores 19.99 as
+        // 19.98999999999999843681, so floor(19.99 * 100) yields 1998 and
+        // silently drops a cent on every rounding step.
+        //
+        // The durable fix is to stop representing money as a float at all
+        // and hold integer cents instead. Until then, round().
+        return round($amount, 2);
     }
 }
