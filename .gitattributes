@@ -1,0 +1,20 @@
+# Normalize all text files to LF inside the repository.
+# You keep CRLF in your working copy on Windows; the Linux CI runner
+# checks out LF. Without this, line endings become a source of
+# "passes locally, fails in CI".
+* text=auto eol=lf
+
+# Files that must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Keep these out of the archive produced by `composer archive` /
+# GitHub's source download, and out of `git diff` noise.
+/.github        export-ignore
+/tests          export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+/phpunit.xml    export-ignore

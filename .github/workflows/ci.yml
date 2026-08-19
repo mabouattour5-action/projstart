@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# Continuous Integration
+#
+# This file lives in the repository, so the pipeline is versioned, reviewed
+# and rolled back exactly like application code. Changing CI is a commit.
+# ---------------------------------------------------------------------------
+
+# Shown in the "Actions" tab and in the commit status checks.
+name: CI
+
+# WHEN does this run? These are the triggers.
+on:
+  push:
+    branches: [main]        # every push to main
+  pull_request:
+    branches: [main]        # and every PR that targets main
+
+  # Lets you click "Run workflow" in the UI without pushing anything.
+  workflow_dispatch:
+
+# Cancel an in-progress run when you push again to the same branch.
+# Without this, three quick pushes queue three full runs and you pay
+# for feedback on commits you have already replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # "test" is the job ID. A workflow can hold many jobs; by default they
+  # run in PARALLEL on separate machines that share nothing.
+  test:
+    # The human-readable name shown in the checks list.
+    name: PHPUnit
+
+    # The runner: a clean, throwaway Ubuntu VM, provisioned per job.
+    # It starts with nothing of yours on it - no code, no vendor/, no PHP
+    # version of your choosing. Every dependency must be declared below.
+    runs-on: ubuntu-latest
+
+    # Steps run SEQUENTIALLY, top to bottom, on that one machine.
+    # If any step exits non-zero, the remaining steps are skipped and
+    # the job is marked failed.
+    steps:
+      # `uses:` runs a prebuilt, shared action from the marketplace.
+      # This one clones your repo onto the runner. Without it, the
+      # machine has no code. @v4 pins the major version.
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Installs the PHP binary + extensions. The runner image ships
+      # *some* PHP, but never rely on that - pin it explicitly so the
+      # build is reproducible and you control upgrades.
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none          # skip Xdebug/PCOV: much faster
+          tools: composer:v2
+
+      # Catches a composer.json edited without refreshing composer.lock,
+      # which is the classic "works on my machine" dependency drift.
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
+      # `run:` executes a shell command on the runner.
+      # NOTE: `install`, never `update` - install obeys the lock file and
+      # gives you the exact versions you tested. `update` would resolve
+      # fresh ones and make CI non-deterministic.
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      # The payoff. Identical to what you run locally, which means a red
+      # build is reproducible on your machine with one command.
+      - name: Run the test suite
+        run: composer test

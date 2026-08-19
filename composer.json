@@ -2,6 +2,7 @@
     "name": "spark-it/projstart",
     "description": "A small PHP app used to learn CI/CD",
     "type": "project",
+    "license": "MIT",
     "require": {
         "php": ">=8.2"
     },
