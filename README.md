@@ -12,6 +12,9 @@ A small PHP application used as a hands-on subject for learning CI/CD.
 | `tests/PriceCalculatorTest.php` | 10 PHPUnit tests |
 | `.github/workflows/ci.yml` | The pipeline: runs on every push and pull request |
 | `.github/actions/setup-php-project/` | Composite action: PHP + Composer cache + install |
+| `.github/workflows/release.yml` | Continuous delivery: verify, build, publish on a tag |
+| `tools/build-release.sh` | Builds the deployable archive |
+| `tools/make-archive.php` | Cross-platform zip + checksum |
 | `tools/check-coverage.php` | Fails the build below the coverage threshold |
 | `phpstan.neon` | Static analysis config (level 9) |
 | `.php-cs-fixer.dist.php` | Coding standard config (PSR-12 + PHP 8.2 migration) |
@@ -62,3 +65,30 @@ Five jobs run in parallel on separate machines:
 A sixth job, **CI Gate**, waits for all of them and fails if any failed.
 Branch protection requires only `CI Gate`, so changing the PHP matrix
 never requires editing the repository ruleset.
+
+## Releasing
+
+Tag a commit and push the tag:
+
+```bash
+git tag -a v1.0.0 -m "First release"
+git push origin v1.0.0
+```
+
+That triggers `Release`, which:
+
+1. **Verifies** - re-runs the whole CI workflow against the tagged commit
+2. **Builds** - `tools/build-release.sh` produces a versioned zip with no
+   dev dependencies, plus a sha256 checksum and a `BUILD-INFO.txt`
+3. **Publishes** - waits for manual approval on the `production`
+   environment, then attaches the artifact to a GitHub Release
+
+The artifact is built once and published as-is. Nothing is rebuilt
+between verification and release.
+
+To build one locally:
+
+```bash
+bash tools/build-release.sh v0.0.0-local
+composer install   # restore dev dependencies afterwards
+```

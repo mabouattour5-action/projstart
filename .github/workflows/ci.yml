@@ -11,6 +11,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+  # Lets ANOTHER workflow run this one as a job. The release pipeline
+  # calls it so a tag can never be published without passing CI first.
+  workflow_call:
+
 concurrency:
   group: ci-${{ github.ref }}
 
