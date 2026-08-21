@@ -56,7 +56,10 @@ jobs:
           tools: composer:v2
 
       - name: Build the release archive
-        run: tools/build-release.sh "${{ github.ref_name }}"
+        # Invoked through `bash` rather than executed directly: the exec
+        # bit is easy to lose on a Windows checkout, and losing it should
+        # not break a release.
+        run: bash tools/build-release.sh "${{ github.ref_name }}"
 
       # Hand the artifact to the next job. Jobs run on different machines
       # and share no disk, so anything crossing a job boundary must be
