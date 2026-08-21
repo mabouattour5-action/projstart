@@ -105,10 +105,38 @@ jobs:
           retention-days: 7
 
   # -------------------------------------------------------------------------
+  # Builds the release artifact on every pull request and throws it away.
+  #
+  # Added after v1.0.0 failed at tag time: the build script was only ever
+  # exercised during a release, so a broken one could not be discovered
+  # until the release itself. Anything that only runs at release time is
+  # untested code on your most important day.
+  build-artifact:
+    name: Build artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-php-project
+
+      - name: Build a throwaway artifact
+        run: bash tools/build-release.sh "ci-${{ github.run_id }}"
+
+      - name: Assert the archive ships the app and not the tests
+        run: |
+          ARCHIVE="build/dist/projstart-ci-${{ github.run_id }}.zip"
+          test -f "$ARCHIVE"
+          unzip -l "$ARCHIVE" | grep -q "src/PriceCalculator.php"
+          unzip -l "$ARCHIVE" | grep -q "vendor/autoload.php"
+          unzip -l "$ARCHIVE" | grep -q "BUILD-INFO.txt"
+          ! unzip -l "$ARCHIVE" | grep -q "tests/"
+          ! unzip -l "$ARCHIVE" | grep -q "phpunit"
+          echo "Archive contents verified."
+
+  # -------------------------------------------------------------------------
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [dependencies, coding-standards, static-analysis, tests, coverage]
+    needs: [dependencies, coding-standards, static-analysis, tests, coverage, build-artifact]
     if: always()
     steps:
       - name: Fail if any upstream job did not succeed
