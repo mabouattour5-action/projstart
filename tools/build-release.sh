@@ -34,7 +34,7 @@ composer install \
     --optimize-autoloader
 
 # Ship only what runs. No tests, no CI config, no tooling.
-cp -R src vendor composer.json composer.lock README.md "${STAGE}/"
+cp -R public src vendor composer.json composer.lock README.md "${STAGE}/"
 
 # Record what this artifact actually is, so a box running it can be
 # traced back to a commit without guesswork.
