@@ -1,0 +1,167 @@
+# ---------------------------------------------------------------------------
+# Deployment
+#
+# Triggered when a GitHub Release is PUBLISHED, so the thing deployed is
+# always an artifact that was verified, built once and approved by a human.
+# This workflow never builds anything - it downloads and ships.
+# ---------------------------------------------------------------------------
+
+name: Deploy
+
+on:
+  release:
+    types: [published]
+
+  # Redeploy an existing release without cutting a new one. This is also
+  # your manual rollback: dispatch with an older tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to deploy (for example v1.0.0)
+        required: true
+
+# Never deploy two releases concurrently, and never cancel one midway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production-server
+      url: ${{ vars.SITE_URL }}
+
+    env:
+      # Non-secret configuration lives in repository VARIABLES.
+      # Only the private key is a SECRET. Keeping the host and path as
+      # variables means the logs stay readable when something breaks.
+      SSH_HOST: ${{ vars.SSH_HOST }}
+      SSH_USER: ${{ vars.SSH_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      SITE_URL: ${{ vars.SITE_URL }}
+
+    steps:
+      - name: Work out which tag is being deployed
+        id: target
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [ -z "$TAG" ]; then echo "No tag to deploy."; exit 1; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying $TAG"
+
+      # ---------------------------------------------------------------------
+      - name: Download the published artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "*.zip" --pattern "*.sha256" --dir dist
+          ls -lh dist/
+
+      # The checksum was generated at BUILD time. Verifying it here proves
+      # the bytes about to hit the server are the bytes that were tested,
+      # and that nothing altered them in between.
+      - name: Verify the checksum
+        run: cd dist && sha256sum -c ./*.sha256
+
+      - name: Unpack
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          unzip -q "dist/projstart-$TAG.zip" -d payload
+          test -f "payload/projstart-$TAG/public/index.php"
+
+      # ---------------------------------------------------------------------
+      # Secrets are passed through ENV, never interpolated straight into the
+      # script body. An expression pasted inline becomes part of the shell
+      # command, which is how workflows get owned by crafted input.
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # Needed for the rollback step below. Captured BEFORE anything moves.
+      - name: Record what is currently live
+        run: |
+          PREVIOUS=$(ssh "$SSH_USER@$SSH_HOST" "readlink -f '$DEPLOY_PATH/current' 2>/dev/null || true")
+          echo "PREVIOUS_RELEASE=$PREVIOUS" >> "$GITHUB_ENV"
+          echo "Currently live: ${PREVIOUS:-nothing}"
+
+      # ---------------------------------------------------------------------
+      # Upload into a NEW directory named after the tag. The running site is
+      # untouched while this happens, so a slow or failed upload cannot leave
+      # visitors looking at half a deployment.
+      - name: Upload the release
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH/releases/$TAG'"
+          rsync -az --delete "payload/projstart-$TAG/" "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/releases/$TAG/"
+
+      # THE ATOMIC SWITCH. Repointing a symlink is a single filesystem
+      # operation: every request is served either entirely by the old
+      # release or entirely by the new one. There is no in-between state.
+      - name: Switch the live symlink
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" "ln -sfn '$DEPLOY_PATH/releases/$TAG' '$DEPLOY_PATH/current'"
+          echo "current -> releases/$TAG"
+
+      # ---------------------------------------------------------------------
+      # A deploy is not successful because rsync exited zero. It is
+      # successful when the new version answers requests correctly.
+      - name: Smoke test the live site
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          echo "Waiting for the site to serve the new release..."
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            BODY=$(curl -fsS --max-time 15 "$SITE_URL/health.php" || true)
+            LIVE=$(echo "$BODY" | grep -o '"version": *"[^"]*"' | cut -d'"' -f4 || true)
+            STATUS=$(echo "$BODY" | grep -o '"status": *"[^"]*"' | cut -d'"' -f4 || true)
+            echo "attempt $attempt: status=${STATUS:-none} version=${LIVE:-none}"
+            if [ "$STATUS" = "ok" ] && [ "$LIVE" = "$TAG" ]; then
+              echo "Live site is serving $TAG and self-test passed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Smoke test failed: the site is not serving $TAG."
+          exit 1
+
+      # ---------------------------------------------------------------------
+      # Runs only if something above failed. Because the previous release is
+      # still on disk, recovery is one symlink away - seconds, not a rebuild.
+      - name: Roll back
+        if: failure()
+        run: |
+          if [ -z "${PREVIOUS_RELEASE:-}" ]; then
+            echo "No previous release recorded; nothing to roll back to."
+            exit 1
+          fi
+          echo "Rolling back to $PREVIOUS_RELEASE"
+          ssh "$SSH_USER@$SSH_HOST" "ln -sfn '$PREVIOUS_RELEASE' '$DEPLOY_PATH/current'"
+          curl -fsS --max-time 15 "$SITE_URL/health.php" || true
+          echo "Rolled back."
+
+      # Keep the five most recent releases so rollback targets survive,
+      # and 100 MB of free hosting does not fill up with old builds.
+      - name: Prune old releases
+        if: success()
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" "ls -1dt '$DEPLOY_PATH'/releases/*/ | tail -n +6 | xargs -r rm -rf"
+          ssh "$SSH_USER@$SSH_HOST" "ls -1dt '$DEPLOY_PATH'/releases/"

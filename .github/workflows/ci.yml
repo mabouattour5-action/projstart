@@ -125,6 +125,8 @@ jobs:
         run: |
           ARCHIVE="build/dist/projstart-ci-${{ github.run_id }}.zip"
           test -f "$ARCHIVE"
+          unzip -l "$ARCHIVE" | grep -q "public/index.php"
+          unzip -l "$ARCHIVE" | grep -q "public/health.php"
           unzip -l "$ARCHIVE" | grep -q "src/PriceCalculator.php"
           unzip -l "$ARCHIVE" | grep -q "vendor/autoload.php"
           unzip -l "$ARCHIVE" | grep -q "BUILD-INFO.txt"

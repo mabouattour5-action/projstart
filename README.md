@@ -12,7 +12,10 @@ A small PHP application used as a hands-on subject for learning CI/CD.
 | `tests/PriceCalculatorTest.php` | 10 PHPUnit tests |
 | `.github/workflows/ci.yml` | The pipeline: runs on every push and pull request |
 | `.github/actions/setup-php-project/` | Composite action: PHP + Composer cache + install |
+| `public/index.php` | Web entry point |
+| `public/health.php` | Reports the live version; used by the deploy smoke test |
 | `.github/workflows/release.yml` | Continuous delivery: verify, build, publish on a tag |
+| `.github/workflows/deploy.yml` | Deploys a published release over SSH |
 | `tools/build-release.sh` | Builds the deployable archive |
 | `tools/make-archive.php` | Cross-platform zip + checksum |
 | `tools/check-coverage.php` | Fails the build below the coverage threshold |
@@ -92,3 +95,46 @@ To build one locally:
 bash tools/build-release.sh v0.0.0-local
 composer install   # restore dev dependencies afterwards
 ```
+
+## Deploying
+
+Publishing a release triggers `Deploy`, which downloads the artifact,
+verifies its checksum, uploads it over SSH and switches a symlink.
+
+```
+<deploy path>/
+  releases/
+    v1.0.0/
+    v1.0.1/
+  current -> releases/v1.0.1     <- web root points here
+```
+
+Uploading into a new directory and repointing `current` makes the switch
+atomic: a request is served entirely by one release or the other, never a
+half-copied mixture. The previous release stays on disk, so rollback is a
+symlink change rather than a rebuild.
+
+The deploy fails if `health.php` does not report the tag that was just
+shipped, and rolls back automatically.
+
+### Required configuration
+
+Repository **variables** (Settings > Secrets and variables > Actions > Variables):
+
+| Name | Example |
+| --- | --- |
+| `SSH_HOST` | `ssh-youraccount.alwaysdata.net` |
+| `SSH_USER` | `youraccount` |
+| `DEPLOY_PATH` | `/home/youraccount/www` |
+| `SITE_URL` | `https://youraccount.alwaysdata.net` |
+
+Repository **secrets**:
+
+| Name | Contents |
+| --- | --- |
+| `SSH_PRIVATE_KEY` | The deploy key private half |
+| `SSH_KNOWN_HOSTS` | Output of `ssh-keyscan <host>` |
+
+### Manual redeploy or rollback
+
+Actions > Deploy > Run workflow, and give it any existing tag.
