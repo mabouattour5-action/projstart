@@ -93,10 +93,27 @@ jobs:
           echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+          # IdentitiesOnly stops ssh offering every other key it can find.
+          # Without it, ssh tries the default identities first, the server
+          # rejects them, MaxAuthTries is reached and the connection falls
+          # back to a password prompt - which looks exactly like a bad key.
+          # StrictHostKeyChecking makes an unknown host a hard failure
+          # rather than a silent trust-on-first-use.
+          cat > ~/.ssh/config <<CONFIG
+          Host deploy-target
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+          CONFIG
+          chmod 600 ~/.ssh/config
+
       # Needed for the rollback step below. Captured BEFORE anything moves.
       - name: Record what is currently live
         run: |
-          PREVIOUS=$(ssh "$SSH_USER@$SSH_HOST" "readlink -f '$DEPLOY_PATH/current' 2>/dev/null || true")
+          PREVIOUS=$(ssh deploy-target "readlink -f '$DEPLOY_PATH/current' 2>/dev/null || true")
           echo "PREVIOUS_RELEASE=$PREVIOUS" >> "$GITHUB_ENV"
           echo "Currently live: ${PREVIOUS:-nothing}"
 
@@ -108,8 +125,8 @@ jobs:
         env:
           TAG: ${{ steps.target.outputs.tag }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH/releases/$TAG'"
-          rsync -az --delete "payload/projstart-$TAG/" "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/releases/$TAG/"
+          ssh deploy-target "mkdir -p '$DEPLOY_PATH/releases/$TAG'"
+          rsync -az --delete "payload/projstart-$TAG/" "deploy-target:$DEPLOY_PATH/releases/$TAG/"
 
       # THE ATOMIC SWITCH. Repointing a symlink is a single filesystem
       # operation: every request is served either entirely by the old
@@ -118,7 +135,7 @@ jobs:
         env:
           TAG: ${{ steps.target.outputs.tag }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "ln -sfn '$DEPLOY_PATH/releases/$TAG' '$DEPLOY_PATH/current'"
+          ssh deploy-target "ln -sfn '$DEPLOY_PATH/releases/$TAG' '$DEPLOY_PATH/current'"
           echo "current -> releases/$TAG"
 
       # ---------------------------------------------------------------------
@@ -154,7 +171,7 @@ jobs:
             exit 1
           fi
           echo "Rolling back to $PREVIOUS_RELEASE"
-          ssh "$SSH_USER@$SSH_HOST" "ln -sfn '$PREVIOUS_RELEASE' '$DEPLOY_PATH/current'"
+          ssh deploy-target "ln -sfn '$PREVIOUS_RELEASE' '$DEPLOY_PATH/current'"
           curl -fsS --max-time 15 "$SITE_URL/health.php" || true
           echo "Rolled back."
 
@@ -163,5 +180,5 @@ jobs:
       - name: Prune old releases
         if: success()
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "ls -1dt '$DEPLOY_PATH'/releases/*/ | tail -n +6 | xargs -r rm -rf"
-          ssh "$SSH_USER@$SSH_HOST" "ls -1dt '$DEPLOY_PATH'/releases/"
+          ssh deploy-target "ls -1dt '$DEPLOY_PATH'/releases/*/ | tail -n +6 | xargs -r rm -rf"
+          ssh deploy-target "ls -1dt '$DEPLOY_PATH'/releases/"
